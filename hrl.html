@@ -1,0 +1,243 @@
+<!doctype html>
+<meta charset="utf-8">
+<script src="https://distill.pub/template.v1.js"></script>
+<script type="text/javascript" src="http://livejs.com/live.js"></script>
+
+
+<script type="text/front-matter">
+  title: "Understanding deep RL agent policies"
+  description: "Explaning policies by discovering the agent's subgoals"
+  authors:
+  - Gregory Bonaert: http://blog.gregbonaert.com
+  affiliations:
+  - Vrije Universiteit Brussel, Belgium: https://vub.be
+</script>
+
+<dt-article>
+  <h1>Understanding deep RL agent policies</h1>
+  <h2>Explaining policies by discovering the agent's subgoals</h2>
+  <dt-byline></dt-byline>
+
+
+  <p>Deep learning had a great impact on reinforcement learning because it allowed us to solve problems that no previous technique could deal with, such as learning to play Go
+  from scratch or beating professionals at Starcraft II.</p>
+
+  <p>Unfortunately, using deep learning makes the agent a sort
+  of black box. We don't know exactly what it has learned, if it
+  has learned the right thing and if it's picking actions for the
+  right reasons.</p>
+
+  <p>The goal of my thesis is to shed light into deep RL agents
+  and understand why they acted the way they did.</p>
+
+
+
+
+
+
+
+  <h2>Hierarchical reinforcement learning</h2>
+
+  <p>When you decide to buy a birthday gift for a friend, you
+  decompose that problem into many subtasks: list what your friend likes, search for a thing that matches these preferences, find the best place to buy it, go there to buy it and finally offer the gift to your friend.</p>
+
+  <figure class="l-page">
+    <img src="https://miro.medium.com/max/665/0*sZJRHFku1KKqH--d.png">
+    <figcaption style="text-align: center">
+      Instead of considering simple actions, we define mega-actions or subgoals such as "Make ganache", "Make egg-white" and "Make crème-patissiere", which require many simple actions
+
+      <br>Source: <a href="https://towardsdatascience.com/data-efficient-hierarchical-reinforcement-learning-hiro-5d8538c27a80">Towards Data Science: Data-Efficient Hierarchical Reinforcement Learning — HIRO</a></figcaption>
+  </figure>
+
+  <p>Solving a problem by decomposing it into a series of goals
+  and then solving each goal one by one is so natural to us that we
+  don't even notice we're doing it. We even often decompose a goal into subgoals and a subgoal into sub-subgoals without a thought. So if this strategy works for us, couldn't it be useful for RL agents too?</p>
+
+  <p>That insight leads to Hierarchical Reinforcement learning. In Hierarchical RL, instead of learning
+  a single policy, there is a hierarchy of policies. For example,
+  the hierarchy could have 3 levels of policies to win at Starcraft:</p>
+
+  <ol>
+    <li>A <strong>high level policy</strong> that chooses the current goal: defend from an attack, focus on economy or launch an aggressive attack against the enemy</li>
+    <li>A <strong>medium level policy</strong> that picks the
+    most appropriate subgoal to accomplish the current goal: move this group of units or build that series of buildings</li>
+    <li>A <strong>low level policy</strong> that picks actions
+    to complete the subgoal as fast and well as possible: move this soldier or build a house there</li>
+  </ol>
+
+  <p>
+    <i>Why are all of these called policies, if the high and medium-level policies output a goal instead of an action? </i>
+    <strong>Because we consider goals as high level actions or mega-actions (composed of many simpler sub-actions).</strong>
+  </p>
+
+  <p>The number of levels in the hierarchy is currently an arbitrary choice made by people, but an interesting idea would be to dynamically decompose goals into subgoals as the need arises instead of having a fixed amount of levels. </p>
+
+  <p>Of course, we don't want to manually 
+    <dt-fn>As in the experiments for the Arcade Learning environment in <dt-cite key="Kulkarni"></dt-cite>, where they manually defined reaching a goal as being near a specific object</dt-fn> 
+  say which goals and subgoals the agent should choose from, because we would need to define them for every new environment and the ones we manually picked could be suboptimal. It's better if the agent learns during the training process which goals to pick. It could also lead to finding approaches humans wouldn't have considered or thought about.</p>
+
+
+
+
+
+
+
+
+
+
+
+  <h2>What is a goal?</h2>
+
+  <p>There are multiple ways we could define goal and each definition has specific consequences:</p>
+
+  <ol>
+    <li>A <strong>discrete set of numbers</strong>, from 0 to X, and the sub-agent would learn to associate behaviors with each number. For example, 0 could mean "build a house" and 1 "attack the enemy". The disadvantage is that we need to pick in advance how many goals there are and it's not very clear what a number corresponds to (if we see that agent picked goal 4, what is it actually trying to do?)</li>
+    
+    <li><strong>A vector of N dimensions 
+      <dt-cite key="Vezhnevets"></dt-cite> </strong>. 
+    We don't have to decide anymore
+    how many goals exists (there is an infinity) but we still have the problem that a goal isn't directly understandable by a
+    human (what does \([0.13, 4.1, -2.7]\) mean?). </li>
+    
+    <li><strong>A desired end state</strong> (e.g. "I want to observe this" 
+       <dt-fn>As in the first experiments in 
+        <dt-cite key="Kulkarni"></dt-cite>, where each of the 6 possible states is a goal</dt-fn> ). 
+    This is already much better for interpretability, but has some problems of generalization. Imagine we want to teach an agent
+    to walk in a straight line. We would need to specify many
+    points along the way as subgoals and would lose the obvious
+    generality of "walk straight". Additionally, if there's a
+    good state the agent has never seen, it could be difficult
+    for the agent to learn to pick it as a goal.</li>
+    
+    <li><strong>A direction in the state space</strong>. This would be more general than a specific state, because the goal now represents a constant change we want: 
+
+      \[s_{desired} = s_{current} + g \]
+
+    We don't actually know in advance  the desired state \(\; s_{desired}\; \) but hope the agent learns to pick goals / directions that lead to moving towards a good end state.
+    <br><br>
+
+    This definition suffers from one weakness: if the environment is stochastic, we might end up in an unexpected state and thus it would be better to adjust the direction. For example, imagine a maze environment where the floor is slippery, so the agent might randomly slip to a neighboring place. If the maze exit is north, the goal might be "go north". However, if the agent slips in one of the steps, going north could now lead to hitting a wall and getting stuck, and so going north wouldn't be the correct goal anymore. In this sense, a fixed direction isn't flexible enough: we should adapt it as we do steps to ensure we're still moving to the right state.</li>
+    
+    <li><strong>A change in state</strong>. This is very similar
+    to a direction, except that at each step we notice the new state we're in and adjust the goal accordingly. We want 
+
+    \[s_{desired} = s + g = s' + g'\] 
+
+    and therefore \( g' = s + g - s' \), where \(s\) is the previous state, \(s'\) is the new state and \(g\) and \(g'\) are the previous goal and the new goal, respectively.</li>
+  </ol>
+
+  <p>Nachum et al. <dt-cite key="Nachum"></dt-cite> used this last definition to great effect in a paper where they also added off-policy training and use of a experience replay buffer, which lead to more sample-efficient learning.</p>
+
+
+
+
+
+
+
+
+
+  <h2>Learning the goals</h2>
+
+  <p>How are these goals learned? And how do we know that the learned goals actually correspond to the definition above and aren't just a big vector with direct meaning?</p>
+
+  <p>Different papers take different approaches. Kulkarni et al (2016, <dt-cite key="Kulkarni"></dt-cite>) learned a set of relevant objects in each Atari game and then use "go near
+  that object" as a goal. Therefore, this corresponded to a fairly small number of goals and was easily learned. The high-level
+  policy had to pick among the pre-defined goals (it was therefore similar to definition 1, except that we hand picked the goal).
+  </p>
+
+  <p>Vezhnevets et al (2017, <dt-cite key="Vezhnevets"></dt-cite>)
+  picked the N-dimensional vector as the definition of a goal. The high-level policy used a neural network to pick that vector. At the beginning, when the network had learned nothing, the goal was almost random. The low-level policy then had to pick actions according to that goal, which at the beginning was also random. However, as training progresses, the low-level policy sometimes picked better actions by chance and the high-level policy learned to associate high rewards with the goal that was used at that time. This bootstrapped the process and over time the high-level learned to pick vector that made the low-level policy act well and the low-level policy picked actions that led to reaching the goal as fast and well as possible (this was the way the low-level policy loss was defined).
+  </p>
+
+  <p>In Nachum et al (2018, <dt-cite key="Nachum"></dt-cite>) the
+  goal is seen as a desired change in state (Definition 5). At each step the desired changed is adjusted and the low-level policy picks in order to make the desired change as small as possible (because it means we're very close to the goal). The high-level policy works in the same way as the previous paper. Both policies use DDPG and to improve the sample efficiency, they use an experience replay buffer (with some adjustemts due to using Hierarchical RL).
+  </p>
+
+
+
+
+
+
+
+
+  <h2>Explainable agents</h2>
+
+  <p>Once we have this hierarchy of policies, we can understand the agent much better, since the goals allow us to understand the
+  states the agent is trying to reach:
+
+  \[s_{desired} = s_{current} + g\]</p>
+
+  <p>If there are multiple hierarchies, we can visualise the goals of the agent in many time scales (short term, medium term, long term, ...).</p>
+
+  <p><strong> Seeing the desired states is useful but another key component of explainability is understanding why those goals were chosen.</strong> To do so, we can use more traditional techniques that examine the link between the state and the chosen action / goal:</p>
+
+  <ul>
+    <li><strong>Saliency and attribution</strong>: how important was each part of the input to pick the current goal / action?</li>
+    <li><strong>Importance maps</strong>: force the agent to focus on a subset of the state to see which one is the most important.</li>
+    <li><strong>Policy distillation</strong>: by decomposing the problem, each agent might be simple enough to be distilled into a interpretable model with good performance.</li>
+  </ul>
+
+</dt-article>
+
+
+
+
+
+<dt-appendix>
+</dt-appendix>
+
+
+
+
+
+
+<script type="text/bibliography">
+
+  @inproceedings{Kulkarni,
+archivePrefix = {arXiv},
+arxivId = {1604.06057},
+author = {Kulkarni, Tejas D and Narasimhan, Karthik R and Saeedi, Ardavan and Tenenbaum, Joshua B.},
+booktitle = {Advances in Neural Information Processing Systems},
+eprint = {1604.06057},
+issn = {10495258},
+mendeley-groups = {References/xrl,References/hrl},
+pages = {3682--3690},
+title = {Hierarchical deep reinforcement learning: Integrating temporal abstraction and intrinsic motivation},
+year = {2016},
+url = {https://papers.nips.cc/paper/6233-hierarchical-deep-reinforcement-learning-integrating-temporal-abstraction-and-intrinsic-motivation.pdf}
+}
+
+@inproceedings{Vezhnevets,
+annote = {they reference kulkarni, and say that kulkarni's weakness is that "subgoal discovery was not adressed". in other words, in kulkarni you have to design the goal (and the way to know when you've reached them) manually. I think here they're designed automatically},
+archivePrefix = {arXiv},
+arxivId = {1703.01161},
+author = {Vezhnevets, Alexander Sasha and Osindero, Simon and Schaul, Tom and Heess, Nicolas and Jaderberg, Max and Silver, David and Kavukcuoglu, Koray},
+booktitle = {34th International Conference on Machine Learning, ICML 2017},
+eprint = {1703.01161},
+isbn = {9781510855144},
+mendeley-groups = {References/xrl,References/hrl},
+pages = {5409--5418},
+title = {FeUdal networks for hierarchical reinforcement learning},
+volume = {7},
+year = {2017},
+url = {https://arxiv.org/pdf/1703.01161.pdf}
+}
+
+
+@incollection{Nachum,
+title = {Data-Efficient Hierarchical Reinforcement Learning},
+author = {Nachum, Ofir and Gu, Shixiang and Lee, Honglak and Levine, Sergey},
+booktitle = {Advances in Neural Information Processing Systems 31},
+editor = {S. Bengio and H. Wallach and H. Larochelle and K. Grauman and N. Cesa-Bianchi and R. Garnett},
+pages = {3303--3313},
+year = {2018},
+url = {https://arxiv.org/pdf/1805.08296.pdf}
+}
+
+
+
+
+</script>
+
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
